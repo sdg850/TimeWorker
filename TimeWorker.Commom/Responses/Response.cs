@@ -4,7 +4,7 @@ using System.Text;
 
 namespace TimeWorker.Commom.Responses
 {
-    public class RegisterResponse
+    public class Response
     {
         public bool isSuccess { get; set; }
         public string Mesages { get; set; }
@@ -12,3 +12,4 @@ namespace TimeWorker.Commom.Responses
 
     }
 }
+

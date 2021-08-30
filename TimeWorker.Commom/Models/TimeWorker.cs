@@ -4,9 +4,9 @@ using System.Text;
 
 namespace TimeWorker.Commom.Models
 {
-    public class TimeWorker
+    public class Timeworker
     {
-        public int  Id { get; set; }
+        public Int32 Id { get; set; }
         public DateTime CreatedTime { get; set; }
         public string Type { get; set; }
         public bool Consolidated { get; set; }
