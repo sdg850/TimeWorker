@@ -1,10 +1,11 @@
-﻿using System;
+﻿using Microsoft.WindowsAzure.Storage.Table;
+using System;
 using System.Collections.Generic;
 using System.Text;
 
-namespace TimeWorker.Commom.Models
+namespace TimeWorker.Functions.Entities
 {
-    public class Consolidatedtimer
+    class ConsolidatedTimerEntity : TableEntity
     {
         public int id { get; set; }
         public DateTime ExecutionDate { get; set; }
