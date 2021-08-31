@@ -145,7 +145,7 @@ namespace TimeWorker.Functions.Functions
             TableOperation AddTableOperation = TableOperation.Replace(timeworkerEntity);
             await TimeWorkerTable.ExecuteAsync(AddTableOperation);
 
-            string message = $"Todo: {id} was updated";
+            string message = $"Employee: {id} was updated";
             log.LogInformation(message);
 
             return new OkObjectResult(new Response

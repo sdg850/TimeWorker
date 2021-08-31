@@ -9,6 +9,6 @@ namespace TimeWorker.Functions.Entities
     {
         public int id { get; set; }
         public DateTime ExecutionDate { get; set; }
-        public int TimeWorked { get; set; }
+        public string TimeWorked { get; set; }
     }
 }

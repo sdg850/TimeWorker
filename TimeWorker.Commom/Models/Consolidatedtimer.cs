@@ -8,6 +8,6 @@ namespace TimeWorker.Commom.Models
     {
         public int id { get; set; }
         public DateTime ExecutionDate { get; set; }
-        public int TimeWorked { get; set; }
+        public string TimeWorked { get; set; }
     }
 }
