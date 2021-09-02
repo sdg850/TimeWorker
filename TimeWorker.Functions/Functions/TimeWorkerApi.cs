@@ -133,12 +133,9 @@ namespace TimeWorker.Functions.Functions
             TimeWorkerEntity timeworkerEntity = (TimeWorkerEntity)findResult.Result;
 
 
-            if (!string.IsNullOrEmpty(item.Type) && !string.IsNullOrEmpty(item.Id.ToString()))
-            {
-                timeworkerEntity.Type = item.Type;
-                timeworkerEntity.Id = item.Id;
+            if (!string.IsNullOrEmpty(item.CreatedTime.ToString()))
+            {                
                 timeworkerEntity.CreatedTime = item.CreatedTime;
-
             }
 
 
@@ -185,77 +182,77 @@ namespace TimeWorker.Functions.Functions
             });
         }
 
-        [FunctionName(nameof(GetItemById))]
-        public static IActionResult GetItemById(
-        [HttpTrigger(AuthorizationLevel.Anonymous, "get", Route = "timeworker/{id}")] HttpRequest req,
-        [Table("TimeWorker", "TimeWorker", "{id}", Connection = "AzureWebJobsStorage")] TimeWorkerEntity timeworkerEntity,
-        string id,
-        ILogger log)
-        {
-            log.LogInformation($"Geting id {id} from the table...");
+        //[FunctionName(nameof(GetItemById))]
+        //public static IActionResult GetItemById(
+        //[HttpTrigger(AuthorizationLevel.Anonymous, "get", Route = "timeworker/{id}")] HttpRequest req,
+        //[Table("TimeWorker", "TimeWorker", "{id}", Connection = "AzureWebJobsStorage")] TimeWorkerEntity timeworkerEntity,
+        //string id,
+        //ILogger log)
+        //{
+        //    log.LogInformation($"Geting id {id} from the table...");
 
 
-            if (timeworkerEntity == null)
-            {
-                return new BadRequestObjectResult(new Response
-                {
-                    isSuccess = false,
-                    Mesages = "¡Ups looks like somthing went wrong, Id no found. Try again!"
+        //    if (timeworkerEntity == null)
+        //    {
+        //        return new BadRequestObjectResult(new Response
+        //        {
+        //            isSuccess = false,
+        //            Mesages = "¡Ups looks like somthing went wrong, Id no found. Try again!"
 
-                });
+        //        });
 
-            }
-
-
-            string message = $"Showing id result...";
-            log.LogInformation(message);
-
-            return new OkObjectResult(new Response
-            {
-
-                isSuccess = true,
-                Mesages = message,
-                Result = timeworkerEntity
-
-            });
-        }
-
-        [FunctionName(nameof(DeleteItemById))]
-        public static async Task<IActionResult> DeleteItemById(
-        [HttpTrigger(AuthorizationLevel.Anonymous, "delete", Route = "timeworker/{id}")] HttpRequest req,
-        [Table("TimeWorker", "TimeWorker", "{id}", Connection = "AzureWebJobsStorage")] TimeWorkerEntity timeworkerEntity,
-        [Table("TimeWorker", Connection = "AzureWebJobsStorage")] CloudTable todoTable,
-        string id,
-        ILogger log)
-        {
-            log.LogInformation($"Deleting id {id} from the table...");
+        //    }
 
 
-            if (timeworkerEntity == null)
-            {
-                return new BadRequestObjectResult(new Response
-                {
-                    isSuccess = false,
-                    Mesages = "¡Ups looks like somthing went wrong, Id no found. Try again!"
+        //    string message = $"Showing id result...";
+        //    log.LogInformation(message);
 
-                });
+        //    return new OkObjectResult(new Response
+        //    {
 
-            }
+        //        isSuccess = true,
+        //        Mesages = message,
+        //        Result = timeworkerEntity
 
-            await todoTable.ExecuteAsync(TableOperation.Delete(timeworkerEntity));
+        //    });
+        //}
+
+        //[FunctionName(nameof(DeleteItemById))]
+        //public static async Task<IActionResult> DeleteItemById(
+        //[HttpTrigger(AuthorizationLevel.Anonymous, "delete", Route = "timeworker/{id}")] HttpRequest req,
+        //[Table("TimeWorker", "TimeWorker", "{id}", Connection = "AzureWebJobsStorage")] TimeWorkerEntity timeworkerEntity,
+        //[Table("TimeWorker", Connection = "AzureWebJobsStorage")] CloudTable todoTable,
+        //string id,
+        //ILogger log)
+        //{
+        //    log.LogInformation($"Deleting id {id} from the table...");
 
 
-            string message = $"Showing id deleted...";
-            log.LogInformation(message);
+        //    if (timeworkerEntity == null)
+        //    {
+        //        return new BadRequestObjectResult(new Response
+        //        {
+        //            isSuccess = false,
+        //            Mesages = "¡Ups looks like somthing went wrong, Id no found. Try again!"
 
-            return new OkObjectResult(new Response
-            {
+        //        });
 
-                isSuccess = true,
-                Mesages = message,
-                Result = timeworkerEntity
+        //    }
 
-            });
-        }
+        //    await todoTable.ExecuteAsync(TableOperation.Delete(timeworkerEntity));
+
+
+        //    string message = $"Showing id deleted...";
+        //    log.LogInformation(message);
+
+        //    return new OkObjectResult(new Response
+        //    {
+
+        //        isSuccess = true,
+        //        Mesages = message,
+        //        Result = timeworkerEntity
+
+        //    });
+        //}
     }
 }

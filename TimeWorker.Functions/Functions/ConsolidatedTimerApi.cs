@@ -30,84 +30,81 @@ namespace TimeWorker.Functions.Functions
             string requestBody = await new StreamReader(req.Body).ReadToEndAsync();
             Consolidatedtimer item = JsonConvert.DeserializeObject<Consolidatedtimer>(requestBody);
 
-
-
-            //if (string.IsNullOrEmpty(item?.Id.ToString()))
-            //{
-            //    return new BadRequestObjectResult(new Response
-            //    {
-            //        isSuccess = false,
-            //        Mesages = "Request must have a  Id of the employee"
-            //    });
-            //}
-
             //---------------------< calling TimeWorkerTable >------------------------------------------
-
-            //TableQuery<TimeWorkerEntity> query = new TableQuery<TimeWorkerEntity>().Where(TableQuery.GenerateFilterConditionForInt("Id", QueryComparisons.Equal, item.Id));
-            TableQuery<TimeWorkerEntity> query = new TableQuery<TimeWorkerEntity>();
+            
+            TableQuery<TimeWorkerEntity> query = new TableQuery<TimeWorkerEntity>().Where(TableQuery.GenerateFilterConditionForBool("Consolidated", QueryComparisons.Equal, false)); ;
             TableQuerySegment<TimeWorkerEntity> Result = await TimeWorkerTable.ExecuteQuerySegmentedAsync(query, null);
-                               
+
             List<int> IdFinded = new List<int>();
+            List<TimeWorkerEntity> Consolidated = new List<TimeWorkerEntity>();
 
             foreach (TimeWorkerEntity record in Result)
             {
-                log.LogInformation($"---------------------->>>inside  results foreach...");
-
                 if (!IdFinded.Contains(record.Id))
                 {
                     TableQuery<TimeWorkerEntity> Query = new TableQuery<TimeWorkerEntity>().Where(TableQuery.GenerateFilterConditionForInt("Id", QueryComparisons.Equal, record.Id));                    
                     TableQuerySegment<TimeWorkerEntity> EmployeeResults = await TimeWorkerTable.ExecuteQuerySegmentedAsync(Query, null);
 
-                    bool employeeType = false;
-                    int IdRecord = 0;
-                    DateTime EntryTime = new DateTime();
+                    bool isZero = false;
+                    TimeWorkerEntity Employee = new TimeWorkerEntity();
                     TimeSpan timer = new TimeSpan();
-
+                    bool hasOutput = false;
+                    
                     foreach (TimeWorkerEntity employeeResult in EmployeeResults)
                     {
-
                         log.LogInformation($"---------------------->>>inside  employeeResult foreach...");
 
-                        if (employeeType && employeeResult.Type == "1")
+                        if (isZero && employeeResult.Type == "1")
                         {
                             
                             DateTime outputTime = employeeResult.CreatedTime;
-                            timer.Add(EntryTime.Subtract(outputTime));
-                            employeeType = !employeeType;
+                            timer = timer + outputTime.Subtract(Employee.CreatedTime);
+                            isZero = !isZero;
+                            hasOutput = true;
+
+                            Consolidated.Add(Employee);
+                            Consolidated.Add(employeeResult);
 
                             log.LogInformation($"timerrrr---------------------->>>{timer}...");
                         }
 
-                        if (!employeeType && employeeResult.Type == "0")
+                        if (!isZero && employeeResult.Type == "0")
                         {
-                            EntryTime = employeeResult.CreatedTime;
-                            employeeType = !employeeType;
+                            Employee = employeeResult;
+                            isZero = !isZero;                            
                         }
-
-                        IdRecord = employeeResult.Id;
-
-
                     }
 
                     
                     log.LogInformation($"---------------------->> timer : {timer.TotalHours}");
                     log.LogInformation($"---------------------->>>Saving timer...");
 
-                    ConsolidatedTimerEntity consolidatedEntity = new ConsolidatedTimerEntity
+                    if (hasOutput)
                     {
-                        PartitionKey = "CONSOLIDATED",
-                        RowKey = DateTime.UtcNow.ToString().Replace("/", "-"),
-                        ETag = "*",
-                        id = IdRecord,
-                        ExecutionDate = DateTime.UtcNow,
-                        TimeWorked = timer.TotalHours.ToString()
 
-                    };
+                        ConsolidatedTimerEntity consolidatedEntity = new ConsolidatedTimerEntity
+                        {
+                            PartitionKey = record.Id.ToString(),
+                            RowKey = DateTime.UtcNow.ToString().Replace("/", "").Replace(":", "").Replace(".", "").Replace(" ", "").Trim(),
+                            ETag = "*",
+                            id = record.Id,
+                            ExecutionDate = DateTime.UtcNow,
+                            TimeWorked = timer.TotalMinutes.ToString()
 
-                    TableOperation AddTableOperation = TableOperation.Insert(consolidatedEntity);
-                    await ConsolidatedTimerTable.ExecuteAsync(AddTableOperation);
+                        };
 
-                    IdFinded.Add(record.Id);
+                        TableOperation AddTableOperation = TableOperation.Insert(consolidatedEntity);
+                        await ConsolidatedTimerTable.ExecuteAsync(AddTableOperation);
+
+                        IdFinded.Add(record.Id);
+                    }
+
+                    foreach(TimeWorkerEntity consolidate in Consolidated)
+                    {
+                        consolidate.Consolidated = true;
+                        TableOperation AddTableOperation = TableOperation.Replace(consolidate);
+                        await TimeWorkerTable.ExecuteAsync(AddTableOperation);
+                    }
 
                 }
 
@@ -129,6 +126,7 @@ namespace TimeWorker.Functions.Functions
             });
 
         }
+
 
         [FunctionName(nameof(GetRecordsById))]
         public static IActionResult GetRecordsById(
