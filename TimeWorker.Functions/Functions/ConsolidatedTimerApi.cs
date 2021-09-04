@@ -12,11 +12,13 @@ using TimeWorker.Functions.Entities;
 using TimeWorker.Commom.Responses;
 using TimeWorker.Commom.Models;
 using System.Collections.Generic;
+using System.Linq;
 
 namespace TimeWorker.Functions.Functions
 {
     public static class ConsolidatedTimerApi
     {
+        //GetAllRecords:: (req, ConsolidatedTimerTable, TimeWorkerTable, log ) --> Response
         [FunctionName(nameof(GetAllRecords))]
         public static async Task<IActionResult> GetAllRecords(
         [HttpTrigger(AuthorizationLevel.Anonymous, "get", Route = "consolidatedtimer")] HttpRequest req,
@@ -26,35 +28,33 @@ namespace TimeWorker.Functions.Functions
         {
             log.LogInformation($"Geting all the items...");
 
-
-            string requestBody = await new StreamReader(req.Body).ReadToEndAsync();
-            Consolidatedtimer item = JsonConvert.DeserializeObject<Consolidatedtimer>(requestBody);
-
-            //---------------------< calling TimeWorkerTable >------------------------------------------
+            //---------------------< Calling all data from TimeWorkerTable >------------------------------------------
             
             TableQuery<TimeWorkerEntity> query = new TableQuery<TimeWorkerEntity>().Where(TableQuery.GenerateFilterConditionForBool("Consolidated", QueryComparisons.Equal, false)); ;
             TableQuerySegment<TimeWorkerEntity> Result = await TimeWorkerTable.ExecuteQuerySegmentedAsync(query, null);
 
-            List<int> IdFinded = new List<int>();
-            List<TimeWorkerEntity> Consolidated = new List<TimeWorkerEntity>();
+            
+            List<int> IdFinded = new List<int>(); //---------------------< Save data to verify that Id wasn´t process before
+            List<TimeWorkerEntity> Consolidated = new List<TimeWorkerEntity>(); //---------------------< Save data to change consolidated boolean true at the end of the process
 
             foreach (TimeWorkerEntity record in Result)
             {
                 if (!IdFinded.Contains(record.Id))
                 {
+                    //---------------------< Calling filter data from TimeWorkerTable >------------------------------------------
                     TableQuery<TimeWorkerEntity> Query = new TableQuery<TimeWorkerEntity>().Where(TableQuery.GenerateFilterConditionForInt("Id", QueryComparisons.Equal, record.Id));                    
                     TableQuerySegment<TimeWorkerEntity> EmployeeResults = await TimeWorkerTable.ExecuteQuerySegmentedAsync(Query, null);
 
-                    bool isZero = false;
+                    bool isZero = false; //-----------------------> check Entry time
                     TimeWorkerEntity Employee = new TimeWorkerEntity();
-                    TimeSpan timer = new TimeSpan();
-                    bool hasOutput = false;
-                    
+                    TimeSpan timer = new TimeSpan();//------------>Counter timeWorked
+                    bool hasOutput = false; //-----------------------> check Entry and Out time
+
                     foreach (TimeWorkerEntity employeeResult in EmployeeResults)
                     {
-                        log.LogInformation($"---------------------->>>inside  employeeResult foreach...");
-
-                        if (isZero && employeeResult.Type == "1")
+                        if (isZero 
+                            && employeeResult.Type == "1" 
+                            && employeeResult.Consolidated == false)
                         {
                             
                             DateTime outputTime = employeeResult.CreatedTime;
@@ -64,28 +64,26 @@ namespace TimeWorker.Functions.Functions
 
                             Consolidated.Add(Employee);
                             Consolidated.Add(employeeResult);
-
-                            log.LogInformation($"timerrrr---------------------->>>{timer}...");
                         }
 
-                        if (!isZero && employeeResult.Type == "0")
+                        if (!isZero 
+                            && employeeResult.Type == "0" 
+                            && employeeResult.Consolidated == false)
                         {
                             Employee = employeeResult;
                             isZero = !isZero;                            
                         }
                     }
 
-                    
-                    log.LogInformation($"---------------------->> timer : {timer.TotalHours}");
-                    log.LogInformation($"---------------------->>>Saving timer...");
-
+                    //---------------------< Save data to ConsolidatedTimerTable >------------------------------------------
                     if (hasOutput)
                     {
+                        string[] RowKey = DateTime.UtcNow.ToString().Replace("/", "").Replace(":", "").Replace(".", "").Split(' ');
 
                         ConsolidatedTimerEntity consolidatedEntity = new ConsolidatedTimerEntity
                         {
                             PartitionKey = record.Id.ToString(),
-                            RowKey = DateTime.UtcNow.ToString().Replace("/", "").Replace(":", "").Replace(".", "").Replace(" ", "").Trim(),
+                            RowKey = RowKey[0],
                             ETag = "*",
                             id = record.Id,
                             ExecutionDate = DateTime.UtcNow,
@@ -93,13 +91,26 @@ namespace TimeWorker.Functions.Functions
 
                         };
 
-                        TableOperation AddTableOperation = TableOperation.Insert(consolidatedEntity);
+                        //-----------------------> check if Id already exist in the table ConsolidatedTimerTable and update or insert data --------------------------------------
+                        TableOperation findOperation = TableOperation.Retrieve<ConsolidatedTimerEntity>(record.Id.ToString(), consolidatedEntity.RowKey);
+                        TableResult findResult = await ConsolidatedTimerTable.ExecuteAsync(findOperation);
+
+                        if (!(findResult.Result == null))
+                        {
+                            ConsolidatedTimerEntity consolidate = (ConsolidatedTimerEntity)findResult.Result;
+                            TimeSpan time = timer + TimeSpan.FromMinutes(double.Parse(consolidate.TimeWorked));
+                            consolidatedEntity.TimeWorked = time.TotalMinutes.ToString();
+
+                        }
+
+                        TableOperation AddTableOperation = TableOperation.InsertOrReplace(consolidatedEntity);
                         await ConsolidatedTimerTable.ExecuteAsync(AddTableOperation);
 
                         IdFinded.Add(record.Id);
                     }
 
-                    foreach(TimeWorkerEntity consolidate in Consolidated)
+                    //---------------------< Update consolidated field in TimeWorkerTable table >------------------------------------------
+                    foreach (TimeWorkerEntity consolidate in Consolidated)
                     {
                         consolidate.Consolidated = true;
                         TableOperation AddTableOperation = TableOperation.Replace(consolidate);
@@ -110,6 +121,7 @@ namespace TimeWorker.Functions.Functions
 
             }
 
+            //---------------------< Calling All records from ConsolidatedTimerTable >------------------------------------------
             TableQuery<ConsolidatedTimerEntity> querySql = new TableQuery<ConsolidatedTimerEntity>();
             TableQuerySegment<ConsolidatedTimerEntity> consolidated = await ConsolidatedTimerTable.ExecuteQuerySegmentedAsync(querySql, null);
 
@@ -127,38 +139,53 @@ namespace TimeWorker.Functions.Functions
 
         }
 
-
-        [FunctionName(nameof(GetRecordsById))]
-        public static IActionResult GetRecordsById(
-        [HttpTrigger(AuthorizationLevel.Anonymous, "get", Route = "consolidatedtimer/{id}")] HttpRequest req,
-        [Table("Consolidatedtimer", "TimeWorker", "{id}", Connection = "AzureWebJobsStorage")] TimeWorkerEntity ConsolidatedTimerTable,
-        string id,
+        //GetRecordsByDate:: (req, ConsolidatedTimerTable, ExecutionDate, log) --> Response
+        [FunctionName(nameof(GetRecordsByDate))]
+        public static async Task<IActionResult> GetRecordsByDate(
+        [HttpTrigger(AuthorizationLevel.Anonymous, "get", Route = "consolidatedtimer/{ExecutionDate}")] HttpRequest req,
+        [Table("Consolidatedtimer", Connection = "AzureWebJobsStorage")] CloudTable ConsolidatedTimerTable,
+        DateTime ExecutionDate,
         ILogger log)
         {
-            log.LogInformation($"Geting id {id} from the table...");
 
+            //---------------------< Calling all data from ConsolidatedTimerTable >------------------------------------------
 
-            if (ConsolidatedTimerTable == null)
+            TableQuery<ConsolidatedTimerEntity> query = new TableQuery<ConsolidatedTimerEntity>();
+            TableQuerySegment<ConsolidatedTimerEntity> ResultQuery = await ConsolidatedTimerTable.ExecuteQuerySegmentedAsync(query, null);
+
+            if (ResultQuery == null)
             {
                 return new BadRequestObjectResult(new Response
                 {
                     isSuccess = false,
-                    Mesages = "¡Ups looks like somthing went wrong, Id no found. Try again!"
+                    Mesages = "¡Ups looks like somthing went wrong, Date no found. Try again!"
 
                 });
-
             }
 
 
-            string message = $"Showing id result...";
-            log.LogInformation(message);
+            //---------------------< Filter DateTime records from  ConsolidatedTimerTable>------------------------------------------
+
+            List<ConsolidatedTimerEntity> filter = new List<ConsolidatedTimerEntity>();
+            string[] date = ExecutionDate.ToString().Split(' ');
+
+            foreach (ConsolidatedTimerEntity result in ResultQuery)
+            {
+                if (result.ExecutionDate.ToString().Contains(date[0]))
+                {
+                    filter.Add(result);
+                }
+
+            }
+
+            string message = $"¡Consolidated data got from {date} was succesfully!";
 
             return new OkObjectResult(new Response
             {
 
                 isSuccess = true,
                 Mesages = message,
-                Result = ConsolidatedTimerTable
+                Result = filter
 
             });
         }
