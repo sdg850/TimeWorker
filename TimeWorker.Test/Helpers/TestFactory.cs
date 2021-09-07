@@ -65,7 +65,7 @@ namespace TimeWorker.Test.Helpers
         {
             return new Timeworker
             {
-                Id = int.Parse(Guid.NewGuid().ToString()),
+                Id = Int32.Parse("98763850"),
                 CreatedTime = DateTime.UtcNow,
                 Type = "0",
                 Consolidated = false

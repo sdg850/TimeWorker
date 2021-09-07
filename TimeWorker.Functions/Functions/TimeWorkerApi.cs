@@ -1,17 +1,16 @@
-﻿using System;
-using System.IO;
-using System.Threading.Tasks;
+﻿using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.Azure.WebJobs;
 using Microsoft.Azure.WebJobs.Extensions.Http;
-using Microsoft.AspNetCore.Http;
 using Microsoft.Extensions.Logging;
-using Newtonsoft.Json;
 using Microsoft.WindowsAzure.Storage.Table;
-using TimeWorker.Functions.Entities;
+using Newtonsoft.Json;
+using System;
+using System.IO;
+using System.Threading.Tasks;
 using TimeWorker.Commom.Models;
 using TimeWorker.Commom.Responses;
-using System.Collections.Generic;
+using TimeWorker.Functions.Entities;
 
 namespace TimeWorker.Functions.Functions
 {
@@ -20,7 +19,7 @@ namespace TimeWorker.Functions.Functions
         [FunctionName(nameof(CreateItem))]
         public static async Task<IActionResult> CreateItem(
             [HttpTrigger(AuthorizationLevel.Anonymous, "post", Route = "timeworker")] HttpRequest req,
-            [Table("TimeWorker", Connection = "AzureWebJobsStorage")] CloudTable TimeWorkerTable,
+            [Table("TimeWorker", Connection = "AzureWebJobsStorage")] CloudTable timeWorkerTable,
             ILogger log)
         {
             log.LogInformation("your request was successfulled.");
@@ -29,7 +28,7 @@ namespace TimeWorker.Functions.Functions
             string requestBody = await new StreamReader(req.Body).ReadToEndAsync();
             Timeworker item = JsonConvert.DeserializeObject<Timeworker>(requestBody);
 
-           
+
 
             if (string.IsNullOrEmpty(item?.Id.ToString()))
             {
@@ -40,58 +39,56 @@ namespace TimeWorker.Functions.Functions
                 });
             }
 
+            TimeWorkerEntity timeworkerEntity = new TimeWorkerEntity
+            {
+                PartitionKey = "TimeWorker",
+                RowKey = DateTime.UtcNow.ToString().Replace("/", "-"),
+                ETag = "*",
+                Id = item.Id,
+                CreatedTime = DateTime.UtcNow,
+                Type = "1",
+                Consolidated = false
+            };
+
             //---------------------< Check if Type field was stored before >------------------------------------------
 
             TableQuery<TimeWorkerEntity> query = new TableQuery<TimeWorkerEntity>().Where(TableQuery.GenerateFilterConditionForInt("Id", QueryComparisons.Equal, item.Id));
-            TableQuerySegment<TimeWorkerEntity> Result = await TimeWorkerTable.ExecuteQuerySegmentedAsync(query, null);
+            TableQuerySegment<TimeWorkerEntity> Result = await timeWorkerTable.ExecuteQuerySegmentedAsync(query, null);
 
             string lastType = "";
-            string type = "1";
-
-            
+            //string type = "1";
 
             foreach (TimeWorkerEntity record in Result)
             {
                 lastType = record.Type;
-                log.LogInformation($"type--------------------------------------->>>>>><<{record.Type}.");
-                log.LogInformation($"Creation--------------------------------------->>>>>><<{record.CreatedTime}.");
             };
 
-            log.LogInformation($"Last Value--------------------------------------->>>>>><<{lastType}.");
 
-            if (string.IsNullOrEmpty(lastType)  || lastType == "1")
+
+            if (string.IsNullOrEmpty(lastType) || lastType == "1")
             {
-                type = "0";
+                timeworkerEntity.Type = "0";
             }
 
-         //----------------<  store new record  >---------------------------------------------------------------------
+            //----------------<  store new record  >---------------------------------------------------------------------
 
-            TimeWorkerEntity timeworkerEntity = new TimeWorkerEntity
-                {
-                    PartitionKey = "TimeWorker",
-                    RowKey = DateTime.UtcNow.ToString().Replace("/","-"),
-                    ETag = "*",
-                    Id = item.Id,
-                    CreatedTime = DateTime.UtcNow,                    
-                    Type = type,
-                    Consolidated = false
-                };
 
-                TableOperation AddTableOperation = TableOperation.Insert(timeworkerEntity);
-                await TimeWorkerTable.ExecuteAsync(AddTableOperation);
 
-                string message = "Todo was storaged inside the table";
-                log.LogInformation(message);
+            TableOperation AddTableOperation = TableOperation.Insert(timeworkerEntity);
+            await timeWorkerTable.ExecuteAsync(AddTableOperation);
 
-                return new OkObjectResult(new Response
-                {
+            string message = "Todo was storaged inside the table";
+            log.LogInformation(message);
 
-                    isSuccess = true,
-                    Mesages = message,
-                    Result = Result
+            return new OkObjectResult(new Response
+            {
 
-                });
-                 
+                isSuccess = true,
+                Mesages = message,
+                Result = Result
+
+            });
+
         }
 
 
@@ -134,7 +131,7 @@ namespace TimeWorker.Functions.Functions
 
 
             if (!string.IsNullOrEmpty(item.CreatedTime.ToString()))
-            {                
+            {
                 timeworkerEntity.CreatedTime = item.CreatedTime;
             }
 
